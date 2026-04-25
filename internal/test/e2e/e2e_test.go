@@ -3727,6 +3727,7 @@ func TestBan(t *testing.T) {
 		require.NoError(t, err)
 		defer close()
 
+		var disruptedEvent *client.IntentDisruptedEvent
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
 				buf := sha256.Sum256([]byte(intentId))
@@ -3742,10 +3743,19 @@ func TestBan(t *testing.T) {
 			onTreeSigningStarted: func(ctx context.Context, event client.TreeSigningStartedEvent, vtxoTree *tree.TxTree) (bool, error) {
 				return true, nil // just skip, do not submit nonces
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil // keep listening, IntentDisrupted arrives shortly after
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 		}
 
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
 
 		// next settle should fail because the nonce has not been submitted
 		_, err = alice.Settle(t.Context())
@@ -3804,6 +3814,7 @@ func TestBan(t *testing.T) {
 		defer close()
 
 		var batchExpiry arklib.RelativeLocktime
+		var disruptedEvent *client.IntentDisruptedEvent
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
 				buf := sha256.Sum256([]byte(intentId))
@@ -3879,10 +3890,19 @@ func TestBan(t *testing.T) {
 			onTreeNoncesAggregated: func(ctx context.Context, event client.TreeNoncesAggregatedEvent) (bool, error) {
 				return false, nil // skip sending signatures
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil // keep listening, IntentDisrupted arrives shortly after
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 		}
 
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
 
 		// next settle should fail because the signature has not been submitted
 		_, err = alice.Settle(t.Context())
@@ -3939,6 +3959,7 @@ func TestBan(t *testing.T) {
 		require.NoError(t, err)
 		defer close()
 
+		var disruptedEvent *client.IntentDisruptedEvent
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
 				buf := sha256.Sum256([]byte(intentId))
@@ -4011,10 +4032,19 @@ func TestBan(t *testing.T) {
 				)
 				return err == nil, err
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil // keep listening, IntentDisrupted arrives shortly after
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 		}
 
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
 
 		// next settle should fail because the signature was invalid
 		_, err = alice.Settle(t.Context())
@@ -4072,6 +4102,7 @@ func TestBan(t *testing.T) {
 		defer close()
 
 		var batchExpiry arklib.RelativeLocktime
+		var disruptedEvent *client.IntentDisruptedEvent
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
 				buf := sha256.Sum256([]byte(intentId))
@@ -4163,10 +4194,20 @@ func TestBan(t *testing.T) {
 			onBatchFinalization: func(ctx context.Context, event client.BatchFinalizationEvent, vtxoTree, connectorTree *tree.TxTree) ([]string, error) {
 				return nil, nil // do not submit forfeit txs
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 		}
 
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
+
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
 
 		// next settle should fail because the forfeit txs have not been submitted
 		_, err = alice.Settle(t.Context())
@@ -4226,6 +4267,7 @@ func TestBan(t *testing.T) {
 		info, err := grpcAlice.GetInfo(t.Context())
 		require.NoError(t, err)
 		var batchExpiry arklib.RelativeLocktime
+		var disruptedEvent *client.IntentDisruptedEvent
 
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
@@ -4315,6 +4357,13 @@ func TestBan(t *testing.T) {
 				)
 				return err == nil, err
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 			onBatchFinalization: func(ctx context.Context, event client.BatchFinalizationEvent, vtxoTree, connectorTree *tree.TxTree) ([]string, error) {
 				txhash, err := chainhash.NewHashFromStr(aliceVtxo.Txid)
 				if err != nil {
@@ -4373,6 +4422,9 @@ func TestBan(t *testing.T) {
 
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
+
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
 
 		// next settle should fail because the forfeit txs have not been submitted
 		_, err = alice.Settle(t.Context())
@@ -4447,6 +4499,7 @@ func TestBan(t *testing.T) {
 		defer close()
 
 		var batchExpiry arklib.RelativeLocktime
+		var disruptedEvent *client.IntentDisruptedEvent
 		handlers := &customBatchEventsHandler{
 			onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
 				buf := sha256.Sum256([]byte(intentId))
@@ -4535,6 +4588,13 @@ func TestBan(t *testing.T) {
 				)
 				return err == nil, err
 			},
+			onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+				return nil
+			},
+			onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+				disruptedEvent = &event
+				return fmt.Errorf("intent disrupted: %s", event.Reason)
+			},
 			onBatchFinalization: func(ctx context.Context, event client.BatchFinalizationEvent, vtxoTree, connectorTree *tree.TxTree) ([]string, error) {
 				commitmentPtx, err := psbt.NewFromRawBytes(strings.NewReader(event.Tx), true)
 				if err != nil {
@@ -4570,9 +4630,141 @@ func TestBan(t *testing.T) {
 		_, _, _, _, _, err = arksdk.JoinBatchSession(t.Context(), stream, handlers)
 		require.Error(t, err)
 
+		require.NotNil(t, disruptedEvent)
+		require.Equal(t, intentId, disruptedEvent.IntentId)
+
 		// next settle should fail because the forfeit txs have not been submitted
 		_, err = alice.Settle(t.Context())
 		require.Error(t, err)
+	})
+
+	t.Run("bystander does not receive intent disrupted", func(t *testing.T) {
+		// Alice misbehaves (skips nonce submission), Bob cooperates.
+		// IntentDisrupted must reach Alice but NOT Bob.
+		alice, grpcAlice := setupArkSDKWithTransport(t)
+		defer alice.Stop()
+		defer grpcAlice.Close()
+
+		bob, grpcBob := setupArkSDKWithTransport(t)
+		defer bob.Stop()
+		defer grpcBob.Close()
+
+		_, aliceAddr, _, err := alice.Receive(t.Context())
+		require.NoError(t, err)
+		faucetOffchain(t, alice, 0.001)
+
+		_, bobAddr, _, err := bob.Receive(t.Context())
+		require.NoError(t, err)
+		faucetOffchain(t, bob, 0.001)
+
+		aliceVtxos, _, err := alice.ListVtxos(t.Context())
+		require.NoError(t, err)
+		require.NotEmpty(t, aliceVtxos)
+		aliceVtxo := aliceVtxos[0]
+
+		bobVtxos, _, err := bob.ListVtxos(t.Context())
+		require.NoError(t, err)
+		require.NotEmpty(t, bobVtxos)
+		bobVtxo := bobVtxos[0]
+
+		secKey, err := btcec.NewPrivateKey()
+		require.NoError(t, err)
+		signerSession := tree.NewTreeSignerSession(secKey)
+
+		aliceIntentId, err := alice.RegisterIntent(
+			t.Context(),
+			[]types.Vtxo{aliceVtxo},
+			[]types.Utxo{},
+			nil,
+			[]types.Receiver{{Amount: aliceVtxo.Amount, To: aliceAddr.Address}},
+			[]string{signerSession.GetPublicKey()},
+		)
+		require.NoError(t, err)
+
+		bobIntentId, err := bob.RegisterIntent(
+			t.Context(),
+			[]types.Vtxo{bobVtxo},
+			[]types.Utxo{},
+			nil,
+			[]types.Receiver{{Amount: bobVtxo.Amount, To: bobAddr.Address}},
+			nil,
+		)
+		require.NoError(t, err)
+
+		aliceTopics := arksdk.GetEventStreamTopics(
+			[]types.Outpoint{aliceVtxo.Outpoint}, []tree.SignerSession{signerSession},
+		)
+		aliceStream, aliceClose, err := grpcAlice.GetEventStream(t.Context(), aliceTopics)
+		require.NoError(t, err)
+		defer aliceClose()
+
+		bobTopics := arksdk.GetEventStreamTopics(
+			[]types.Outpoint{bobVtxo.Outpoint}, nil,
+		)
+		bobStream, bobClose, err := grpcBob.GetEventStream(t.Context(), bobTopics)
+		require.NoError(t, err)
+		defer bobClose()
+
+		var aliceDisruptedEvent *client.IntentDisruptedEvent
+		var bobDisruptedEvent *client.IntentDisruptedEvent
+
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+
+		var aliceErr, bobErr error
+
+		go func() {
+			defer wg.Done()
+			handlers := &customBatchEventsHandler{
+				onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
+					buf := sha256.Sum256([]byte(aliceIntentId))
+					hashedIntentId := hex.EncodeToString(buf[:])
+					if slices.Contains(event.HashedIntentIds, hashedIntentId) {
+						err := grpcAlice.ConfirmRegistration(ctx, aliceIntentId)
+						return false, time.Duration(event.BatchExpiry) * time.Second, err
+					}
+					return true, -1, nil
+				},
+				// onTreeSigningStarted not set: default returns (false, nil), skipping nonce submission
+				onBatchFailed: func(ctx context.Context, event client.BatchFailedEvent) error {
+					return nil // keep waiting for IntentDisrupted
+				},
+				onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+					aliceDisruptedEvent = &event
+					return fmt.Errorf("intent disrupted: %s", event.Reason)
+				},
+			}
+			_, _, _, _, _, aliceErr = arksdk.JoinBatchSession(t.Context(), aliceStream, handlers)
+		}()
+
+		go func() {
+			defer wg.Done()
+			handlers := &customBatchEventsHandler{
+				onBatchStarted: func(ctx context.Context, event client.BatchStartedEvent) (bool, time.Duration, error) {
+					buf := sha256.Sum256([]byte(bobIntentId))
+					hashedIntentId := hex.EncodeToString(buf[:])
+					if slices.Contains(event.HashedIntentIds, hashedIntentId) {
+						err := grpcBob.ConfirmRegistration(ctx, bobIntentId)
+						return false, time.Duration(event.BatchExpiry) * time.Second, err
+					}
+					return true, -1, nil
+				},
+				onIntentDisrupted: func(ctx context.Context, event client.IntentDisruptedEvent) error {
+					bobDisruptedEvent = &event
+					return fmt.Errorf("intent disrupted: %s", event.Reason)
+				},
+			}
+			_, _, _, _, _, bobErr = arksdk.JoinBatchSession(t.Context(), bobStream, handlers)
+		}()
+
+		wg.Wait()
+
+		require.Error(t, aliceErr)
+		require.NotNil(t, aliceDisruptedEvent)
+		require.Equal(t, aliceIntentId, aliceDisruptedEvent.IntentId)
+
+		require.Nil(t, bobDisruptedEvent)
+		_ = bobErr
 	})
 }
 
